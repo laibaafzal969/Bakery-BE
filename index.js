@@ -26,6 +26,11 @@ const orderStatusEnum = {
   OnWay: "OnWay",
 };
 
+const userTypeEnum = {
+  Admin: "Admin",
+  Customer: "Customer",
+};
+
 // Database Initialization
 const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
   host: DB_HOST,
@@ -36,6 +41,11 @@ const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
 const User = sequelize.define(
   "User",
   {
+    name: { type: DataTypes.STRING, allowNull: true },
+    userType: {
+      type: DataTypes.ENUM(Object.values(userTypeEnum)),
+      defaultValue: userTypeEnum.Admin,
+    },
     email: { type: DataTypes.STRING, allowNull: false, unique: true },
     password: { type: DataTypes.STRING, allowNull: false },
   },
@@ -76,6 +86,7 @@ const Contact = sequelize.define(
   {
     name: { type: DataTypes.STRING, allowNull: false },
     email: { type: DataTypes.STRING, allowNull: false },
+    subject: { type: DataTypes.STRING, allowNull: false },
     message: { type: DataTypes.TEXT, allowNull: false },
   },
   { timestamps: true }
@@ -98,10 +109,15 @@ const authMiddleware = async (req, res, next) => {
 // Routes
 // User Routes
 app.post("/api/users/register", async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, name, userType } = req.body;
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({ email, password: hashedPassword });
+    const user = await User.create({
+      email,
+      password: hashedPassword,
+      name,
+      userType,
+    });
     res.json(user);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -140,6 +156,11 @@ app.post("/api/products", authMiddleware, async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+app.get("/api/users", authMiddleware, async (req, res) => {
+  const users = await User.findAll();
+  res.json(users);
 });
 
 app.get("/api/products", async (req, res) => {
@@ -202,14 +223,40 @@ app.get("/api/orders", async (req, res) => {
   res.json(orders);
 });
 
+app.put("/api/orders/:id", authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    const order = await Order.findByPk(id);
+    if (!order) return res.status(404).json({ error: "Order not found" });
+
+    order.status = status;
+    await order.save();
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Contact Routes
 app.post("/api/contacts", async (req, res) => {
-  const { name, email, message } = req.body;
+  const { name, email, subject, message } = req.body;
   try {
-    const contact = await Contact.create({ name, email, message });
+    const contact = await Contact.create({ name, email, subject, message });
     res.json(contact);
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+app.get("/api/contacts", authMiddleware, async (req, res) => {
+  try {
+    const contacts = await Contact.findAll({
+      order: [["id", "DESC"]], // Order by `id` in descending order
+    });
+    res.json(contacts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
